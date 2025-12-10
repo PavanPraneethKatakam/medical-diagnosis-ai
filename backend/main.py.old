@@ -1,0 +1,220 @@
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional
+import sqlite3
+import uvicorn
+
+from backend.knowledge_agent import KnowledgeSynthesisAgent
+from backend.causal_agent import CausalDiscoveryAgent
+from backend.decision_agent import DecisionMakingAgent
+from backend.chat_agent import ChatAgent
+from backend.document_processor import DocumentProcessor
+
+app = FastAPI(title="RAG Causal Discovery API")
+
+# Allow CORS for frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+DB_PATH = "database/medical_knowledge.db"
+
+# Initialize Agents
+knowledge_agent = KnowledgeSynthesisAgent(DB_PATH)
+causal_agent = CausalDiscoveryAgent(DB_PATH)
+decision_agent = DecisionMakingAgent()
+chat_agent = ChatAgent()
+document_processor = DocumentProcessor(DB_PATH)
+
+# Pydantic models
+class Patient(BaseModel):
+    patient_id: int
+    name: str
+    dob: str
+    gender: str
+
+class Diagnosis(BaseModel):
+    visit_date: str
+    disease_code: str
+    disease_name: str
+
+class PredictionRequest(BaseModel):
+    patient_id: int
+    clinician_comment: Optional[str] = None
+
+class PredictionResponse(BaseModel):
+    patient_id: int
+    predicted_diseases: List[dict]
+    explanation: str
+    agent_steps: dict # New field to show agent outputs
+
+class ChatMessage(BaseModel):
+    message: str
+
+class ChatResponse(BaseModel):
+    reply: str
+    conversation_id: str
+
+@app.get("/")
+def read_root():
+    return {"message": "Welcome to the Agentic RAG Causal Discovery System"}
+
+@app.get("/patients", response_model=List[Patient])
+def get_patients():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT patient_id, name, dob, gender FROM patients")
+    patients = [
+        {"patient_id": row[0], "name": row[1], "dob": row[2], "gender": row[3]}
+        for row in cursor.fetchall()
+    ]
+    conn.close()
+    return patients
+
+@app.get("/patients/{patient_id}/history", response_model=List[Diagnosis])
+def get_patient_history(patient_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    query = """
+        SELECT v.visit_date, d.disease_code, d.disease_name
+        FROM visits v
+        JOIN diagnoses d ON v.visit_id = d.visit_id
+        WHERE v.patient_id = ?
+        ORDER BY v.visit_date
+    """
+    cursor.execute(query, (patient_id,))
+    history = [
+        {"visit_date": row[0], "disease_code": row[1], "disease_name": row[2]}
+        for row in cursor.fetchall()
+    ]
+    conn.close()
+    return history
+
+@app.post("/predict/{patient_id}", response_model=PredictionResponse)
+def generate_prediction(patient_id: int, request: PredictionRequest):
+    # 1. Get Patient History
+    history = get_patient_history(patient_id)
+    if not history:
+        raise HTTPException(status_code=404, detail="Patient history not found")
+    
+    # Get the most recent disease
+    latest_diagnosis = history[-1]
+    current_disease_code = latest_diagnosis['disease_code']
+    
+    # --- Agentic Workflow ---
+    
+    # Step 1: Causal Discovery Agent
+    # "Generate a DAG representing the causality..."
+    causal_output = causal_agent.discover_causal_graph(current_disease_code)
+    dag = causal_output['dag']
+    predictions = causal_output['predictions']
+    
+    # Step 2: Knowledge Synthesis Agent
+    # "Search documents... Generate a concise summary."
+    candidate_codes = [p['disease_code'] for p in predictions]
+    candidate_codes.append(current_disease_code)
+    knowledge_output = knowledge_agent.synthesize_knowledge(candidate_codes)
+    
+    # Step 3: Decision Making Agent
+    # "Predict a list of diseases... Output in JSON form."
+    decision_output = decision_agent.make_decision(
+        patient_history=history,
+        knowledge_summary=knowledge_output,
+        causal_dag=causal_output,
+        clinician_comment=request.clinician_comment
+    )
+    
+    
+    return {
+        "patient_id": patient_id,
+        "predicted_diseases": predictions,
+        "explanation": decision_output['explanation'],
+        "recommendations": decision_output.get('recommendations', []),
+        "agent_steps": {
+            "causal_dag": dag,
+            "knowledge_summary": knowledge_output['summary']
+        }
+    }
+
+@app.post("/upload/{patient_id}")
+async def upload_document(patient_id: int, file: UploadFile = File(...)):
+    """Upload and process a health report document."""
+    try:
+        # Read file bytes
+        file_bytes = await file.read()
+        
+        # Process and store document
+        result = document_processor.store_document(
+            patient_id=patient_id,
+            filename=file.filename,
+            file_bytes=file_bytes,
+            document_type='lab_report'  # Can be enhanced to detect type
+        )
+        
+        return {
+            "message": "Document uploaded successfully",
+            "document_id": result["document_id"],
+            "filename": file.filename,
+            "extracted_text_preview": result["extracted_text"][:200] + "...",
+            "lab_values": result["lab_values"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process document: {str(e)}")
+
+@app.post("/chat/{patient_id}", response_model=ChatResponse)
+def chat_with_agent(patient_id: int, message: ChatMessage):
+    """Interactive chat with the SLM about patient data."""
+    conversation_id = f"patient_{patient_id}"
+    
+    # Check if conversation exists, if not initialize it
+    if conversation_id not in chat_agent.conversations:
+        # Get patient data
+        history = get_patient_history(patient_id)
+        if not history:
+            raise HTTPException(status_code=404, detail="Patient history not found")
+        
+        # Get latest diagnosis
+        current_disease_code = history[-1]['disease_code']
+        
+        # Get causal analysis
+        causal_output = causal_agent.discover_causal_graph(current_disease_code)
+        
+        # Get knowledge
+        candidate_codes = [p['disease_code'] for p in causal_output['predictions']]
+        candidate_codes.append(current_disease_code)
+        knowledge_output = knowledge_agent.synthesize_knowledge(candidate_codes)
+        
+        # Get uploaded documents
+        documents = document_processor.get_patient_documents(patient_id)
+        
+        # Initialize conversation
+        chat_agent.start_conversation(
+            patient_id=patient_id,
+            patient_history=history,
+            causal_dag=causal_output,
+            knowledge_summary=knowledge_output,
+            documents=documents
+        )
+    
+    # Process message
+    response = chat_agent.chat(conversation_id, message.message)
+    
+    if "error" in response:
+        raise HTTPException(status_code=400, detail=response["error"])
+    
+    return response
+
+@app.get("/chat/{patient_id}/history")
+def get_chat_history(patient_id: int):
+    """Get conversation history for a patient."""
+    conversation_id = f"patient_{patient_id}"
+    history = chat_agent.get_conversation_history(conversation_id)
+    return {"conversation_id": conversation_id, "messages": history}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)

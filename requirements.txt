@@ -1,0 +1,13 @@
+fastapi==0.112.0
+numpy==1.26.4
+pdfplumber==0.11.8
+pydantic==2.6.3
+pydantic_core==2.16.3
+requests==2.31.0
+requests-html==0.10.0
+sentence-transformers==2.6.1
+torch==2.9.0
+torchaudio==2.9.0
+torchvision==0.24.0
+transformers==4.39.2
+uvicorn==0.30.5

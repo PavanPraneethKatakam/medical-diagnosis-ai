@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agentic Medical Diagnosis System</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>🏥 Agentic Medical Diagnosis System</h1>
+                <p>AI-Powered Disease Prediction with Multi-Agent Workflow</p>
+            </div>
+            <button class="theme-toggle" onclick="toggleTheme()">🌙</button>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Left Panel: Patient Selection & Workflow -->
+            <div class="left-panel">
+                <!-- Patient Selection -->
+                <div class="card">
+                    <h2>📋 Select Patient</h2>
+                    <select id="patientSelect" onchange="loadPatientHistory()">
+                        <option value="">-- Select a patient --</option>
+                    </select>
+
+                    <div id="patientInfo" class="patient-info" style="display: none;">
+                        <h3 id="patientName"></h3>
+                        <p><strong>DOB:</strong> <span id="patientDOB"></span></p>
+                        <p><strong>Gender:</strong> <span id="patientGender"></span></p>
+                    </div>
+                </div>
+
+                <!-- Patient History -->
+                <div class="card" id="historyCard" style="display: none;">
+                    <h2>📊 Medical History</h2>
+                    <div id="historyTimeline" class="timeline"></div>
+                </div>
+
+                <!-- Prediction Controls -->
+                <div class="card" id="controlsCard" style="display: none;">
+                    <h2>🤖 Generate Prediction</h2>
+                    <textarea id="clinicianComment" placeholder="Add clinician notes (optional)..." rows="3"></textarea>
+                    <button class="btn-primary" onclick="generatePrediction()">
+                        <span id="predictBtnText">🔮 Run Agent Workflow</span>
+                        <span id="predictLoader" class="loader" style="display: none;"></span>
+                    </button>
+                </div>
+
+                <!-- Predictions Results -->
+                <div class="card" id="predictionsCard" style="display: none;">
+                    <h2>🎯 Predictions</h2>
+                    <div id="predictionsList"></div>
+
+                    <h3 style="margin-top: 20px;">💡 Explanation</h3>
+                    <div id="explanation" class="explanation"></div>
+
+                    <h3 style="margin-top: 20px;">📚 Evidence</h3>
+                    <div id="evidence" class="evidence"></div>
+                </div>
+            </div>
+
+            <!-- Right Panel: DAG Visualization & Chat -->
+            <div class="right-panel">
+                <!-- DAG Visualization -->
+                <div class="card" id="dagCard" style="display: none;">
+                    <h2>🔗 Causal DAG</h2>
+                    <div id="dagContainer" class="dag-container">
+                        <div id="mermaidDiagram"></div>
+                    </div>
+
+                    <div class="dag-controls">
+                        <h3>✏️ Refine DAG</h3>
+                        <div class="refine-form">
+                            <select id="refineAction">
+                                <option value="add_edge">Add Edge</option>
+                                <option value="remove_edge">Remove Edge</option>
+                                <option value="reverse_edge">Reverse Edge</option>
+                            </select>
+                            <input type="text" id="fromDisease" placeholder="From disease code">
+                            <input type="text" id="toDisease" placeholder="To disease code">
+                            <textarea id="refineReason" placeholder="Reason for change..." rows="2"></textarea>
+                            <button class="btn-secondary" onclick="refineDAG()">Apply Change</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat Interface -->
+                <div class="card chat-card">
+                    <h2>💬 AI Assistant</h2>
+                    <div id="chatMessages" class="chat-messages"></div>
+                    <div class="chat-input">
+                        <input type="text" id="chatInput" placeholder="Ask about the patient..."
+                            onkeypress="handleChatKeypress(event)">
+                        <button onclick="sendChatMessage()">Send</button>
+                    </div>
+                </div>
+
+                <!-- File Upload -->
+                <div class="card">
+                    <h2>📄 Upload Document</h2>
+                    <input type="file" id="fileInput" accept=".pdf,.txt">
+                    <input type="text" id="diseaseCodeInput" placeholder="Disease code (optional)">
+                    <button class="btn-secondary" onclick="uploadDocument()">Upload</button>
+                    <div id="uploadStatus"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>Powered by KnowledgeSynthesisAgent, CausalDiscoveryAgent & DecisionMakingAgent</p>
+        <p id="systemStatus">🟢 System Ready</p>
+    </footer>
+
+    <script src="/static/app.js"></script>
+</body>
+
+</html>
