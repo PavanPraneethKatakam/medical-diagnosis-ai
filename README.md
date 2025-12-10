@@ -525,8 +525,8 @@ If you use this system in your research, please cite:
 ```bibtex
 @software{agentic_medical_diagnosis,
   title={Agentic Medical Diagnosis System},
-  author={Your Name},
-  year={2024},
-  url={https://github.com/yourusername/rag_causal_discovery}
+  author=Pavan Praneeth Katakam,
+  year= 2025,
+  url={https://github.com/pavanpraneethkatakam/rag_causal_discovery}
 }
 ```
