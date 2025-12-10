@@ -1,6 +1,4 @@
 # What We Built: Agentic Medical Diagnosis System
-## A Complete Guide to Understanding Your AI-Powered Medical Assistant
-
 ---
 
 ## 🎯 What Is This System?
@@ -524,14 +522,14 @@ Result: System never crashes, always gives an answer
 
 **Step 1**: Start the server
 ```bash
-cd /Users/praneethkatakam/.gemini/antigravity/scratch/rag_causal_discovery
+cd /Users/praneethkatakam/.///rag_causal_discovery
 python3 -m uvicorn app:app --host 127.0.0.1 --port 8001 --reload
 ```
 
 **Step 2**: Open the web interface
 ```
 Open in browser:
-file:///Users/praneethkatakam/.gemini/antigravity/scratch/rag_causal_discovery/frontend/index.html
+file:///Users/praneethkatakam/.///rag_causal_discovery/frontend/index.html
 ```
 
 **Step 3**: Try it out
@@ -640,7 +638,7 @@ All processing happens locally:
 
 **Built with**: Python, FastAPI, SQLite, Sentence-Transformers, Flan-T5, Llama 3.2, HTML/CSS/JavaScript, Mermaid.js
 
-**Location**: `/Users/praneethkatakam/.gemini/antigravity/scratch/rag_causal_discovery`
+**Location**: `/Users/praneethkatakam/rag_causal_discovery`
 
 **Documentation**: README.md, QUICKSTART.md, walkthrough.md
 
