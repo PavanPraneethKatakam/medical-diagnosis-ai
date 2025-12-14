@@ -3,9 +3,9 @@ import torch
 
 class DecisionMakingAgent:
     def __init__(self):
-        print("Loading SLM (google/flan-t5-small)...")
-        self.tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-small")
-        self.model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-small")
+        print("Loading SLM (google/flan-t5-base)...")
+        self.tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-base")
+        self.model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-base")
         print("SLM Loaded.")
 
     def make_decision(self, patient_history, knowledge_summary, causal_dag, clinician_comment=None):

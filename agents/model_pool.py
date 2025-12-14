@@ -70,7 +70,7 @@ class ModelPool:
     
     def load_slm_model(
         self,
-        model_name: str = "google/flan-t5-small"
+        model_name: str = "google/flan-t5-base"
     ) -> Tuple[AutoTokenizer, AutoModelForSeq2SeqLM, str]:
         """
         Load or get SLM model and tokenizer.

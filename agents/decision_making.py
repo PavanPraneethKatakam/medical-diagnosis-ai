@@ -21,7 +21,7 @@ class DecisionMakingAgent:
     Uses Flan-T5 with deterministic fallback for robustness.
     """
     
-    def __init__(self, model_name: str = "google/flan-t5-small", device: str = "cpu"):
+    def __init__(self, model_name: str = "google/flan-t5-base", device: str = "cpu"):
         """
         Initialize the Decision Making Agent.
         

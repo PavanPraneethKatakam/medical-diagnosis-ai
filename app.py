@@ -25,7 +25,7 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# Allow CORS for frontend
+# Allow CORS for frontend - CRITICAL for Hugging Face Spaces
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -48,12 +48,13 @@ async def startup_event():
     
     # Preload models
     model_pool = get_model_pool()
+
     
     # Preload embedding model
     model_pool.load_embedding_model("all-MiniLM-L6-v2")
     
     # Preload SLM model
-    model_pool.load_slm_model("google/flan-t5-small")
+    model_pool.load_slm_model("google/flan-t5-base")
     
     # Warmup models with dummy inference
     model_pool.warmup_models()

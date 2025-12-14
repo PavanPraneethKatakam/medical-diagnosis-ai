@@ -64,8 +64,7 @@ def get_agents():
 @router.post("/predict", response_model=PredictionResponse)
 async def predict(
     request: PredictRequest,
-    fastapi_request: Request,
-    username: str = Depends(get_current_username)
+    fastapi_request: Request
 ):
     """
     Generate disease predictions using full agent workflow.
@@ -292,8 +291,7 @@ async def predict(
 @router.post("/refine", response_model=PredictionResponse)
 async def refine(
     request: RefineRequest,
-    fastapi_request: Request,
-    username: str = Depends(get_current_username)
+    fastapi_request: Request
 ):
     """
     Refine DAG with clinician feedback.
@@ -516,8 +514,7 @@ async def get_dag(patient_id: int):
 async def upload_document(
     file: UploadFile = File(...),
     disease_code: Optional[str] = Form(None),
-    fastapi_request: Request = None,
-    username: str = Depends(get_current_username)
+    fastapi_request: Request = None
 ):
     """
     Upload and process medical document.
@@ -666,8 +663,7 @@ def _chunk_text(text: str, max_words: int = 600) -> List[str]:
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
-    fastapi_request: Request,
-    username: str = Depends(get_current_username)
+    fastapi_request: Request
 ):
     """
     Interactive chat with medical AI.
@@ -707,6 +703,37 @@ async def chat(
             
             recent_diagnoses = [row[0] for row in cursor.fetchall()]
             
+            # Extract disease codes from user message (e.g., "I21.9", "E11")
+            import re
+            disease_code_pattern = r'\b([A-Z]\d{1,2}(?:\.\d{1,2})?)\b'
+            mentioned_codes = re.findall(disease_code_pattern, request.message.upper())
+            
+            # Look up disease code definitions
+            disease_definitions = {}
+            if mentioned_codes:
+                placeholders = ','.join(['?' for _ in mentioned_codes])
+                cursor.execute(f"""
+                    SELECT DISTINCT disease_code, disease_name
+                    FROM diagnoses
+                    WHERE disease_code IN ({placeholders})
+                """, mentioned_codes)
+                
+                for row in cursor.fetchall():
+                    disease_definitions[row[0]] = row[1]
+            
+            # Also get definitions for patient's recent diagnoses
+            if recent_diagnoses:
+                placeholders = ','.join(['?' for _ in recent_diagnoses])
+                cursor.execute(f"""
+                    SELECT DISTINCT disease_code, disease_name
+                    FROM diagnoses
+                    WHERE disease_code IN ({placeholders})
+                """, recent_diagnoses)
+                
+                for row in cursor.fetchall():
+                    if row[0] not in disease_definitions:
+                        disease_definitions[row[0]] = row[1]
+            
             # Get conversation history
             cursor.execute("""
                 SELECT role, message
@@ -721,42 +748,84 @@ async def chat(
             
             # Get knowledge summaries
             summaries = []
-            if recent_diagnoses:
+            # If user is asking about a specific disease code, search for that
+            search_codes = mentioned_codes if mentioned_codes else recent_diagnoses
+            if search_codes:
                 query = knowledge_agent.generate_query(recent_diagnoses, [])
                 summaries = knowledge_agent.retrieve_and_summarize(query, top_k=5)
             
-            # Build chat prompt
+            # Build chat prompt - CONVERSATIONAL, not JSON
             context = f"Patient {request.patient_id} with recent diagnoses: {', '.join(recent_diagnoses)}"
+            
+            # Add disease code definitions to context
+            definitions_context = ""
+            if disease_definitions:
+                definitions_context = "\n\nDisease Code Definitions:\n" + "\n".join([
+                    f"- {code}: {name}"
+                    for code, name in disease_definitions.items()
+                ])
+            
             knowledge_context = ""
             if summaries:
                 knowledge_context = "\n\nRelevant medical knowledge:\n" + "\n".join([
-                    f"- {s.get('disease_code', 'N/A')}: {s.get('summary', '')[:150]}"
+                    f"- {s.get('disease_code', 'N/A')}: {s.get('summary', '')}"
                     for s in summaries[:3]
                 ])
             
             history_str = "\n".join([f"{role.capitalize()}: {msg}" for role, msg in history[-5:]])
             
-            chat_prompt = f"""You are a helpful medical AI assistant.
+            # Conversational prompt for Flan-T5
+            chat_prompt = f"""Answer the patient's question based on their medical history.
 
-Patient Context: {context}
+Patient History: {', '.join(recent_diagnoses)}
+{definitions_context}
 {knowledge_context}
 
-Conversation History:
+Recent Conversation:
 {history_str}
 
-Patient: {request.message}
+Question: {request.message}
 
-Respond concisely and helpfully."""
+Answer (be helpful and concise, 1-2 sentences):"""
             
-            # Generate response
-            global ollama_adapter
-            try:
-                if ollama_adapter is not None and ollama_adapter.enabled:
-                    reply = ollama_adapter.generate(chat_prompt, max_tokens=300).strip()
+            # PRIORITY CHECK: If user is asking about a disease code, use database definition directly
+            # Don't trust the model for this - it hallucinates!
+            if mentioned_codes and disease_definitions:
+                code = mentioned_codes[0]
+                if code in disease_definitions:
+                    reply = f"{code} is the ICD-10 code for {disease_definitions[code]}."
+                    # Add additional context if available
+                    if summaries:
+                        for summary in summaries[:3]:
+                            if summary.get('disease_code') == code:
+                                reply += f" {summary.get('summary', '')[:150]}"
+                                break
                 else:
-                    reply = decision_agent._generate_from_model(chat_prompt, max_length=200)
-            except Exception:
-                reply = f"I understand you're asking about {request.message}. Based on the patient's history, I recommend consulting with a healthcare provider."
+                    reply = f"I don't have information about disease code {code} in this patient's records. It may not be in the database."
+            else:
+                # Generate response from model for general questions
+                global ollama_adapter
+                try:
+                    if ollama_adapter is not None and ollama_adapter.enabled:
+                        reply = ollama_adapter.generate(chat_prompt, max_tokens=300).strip()
+                    else:
+                        # Use Flan-T5 for conversational response
+                        reply = decision_agent._generate_from_model(chat_prompt, max_length=150).strip()
+                        
+                        # If response is empty or too short, use knowledge-based fallback
+                        if not reply or len(reply) < 10:
+                            raise ValueError("Generated response too short")
+                            
+                except Exception as e:
+                    # Knowledge-based fallback response
+                    if summaries and recent_diagnoses:
+                        top_summary = summaries[0]
+                        summary_text = top_summary.get('summary', '')
+                        reply = f"Based on the patient's history of {', '.join(recent_diagnoses[:2])}, {summary_text[:200]}"
+                    elif recent_diagnoses:
+                        reply = f"I understand you're asking about {request.message}. Based on the patient's history of {', '.join(recent_diagnoses[:2])}, I recommend consulting with a healthcare provider for personalized guidance."
+                    else:
+                        reply = f"I understand you're asking about {request.message}. I recommend consulting with a healthcare provider for personalized guidance."
             
             # Store conversation (TRANSACTIONAL)
             with transaction(conn) as cursor:
