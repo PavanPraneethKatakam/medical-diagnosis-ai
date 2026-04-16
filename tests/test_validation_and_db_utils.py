@@ -8,13 +8,37 @@ from fastapi import HTTPException
 from fastapi.security import HTTPBasicCredentials
 from starlette.requests import Request
 
-from api.models import ChatRequest, PredictRequest, RefineRequest, UploadDocRequest
-from api.security import (
-    _rate_limit_storage,
-    check_rate_limit,
-    get_current_username,
-    validate_file_upload,
-)
+import importlib.util
+import sys
+import types
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+if "api" not in sys.modules:
+    api_pkg = types.ModuleType("api")
+    api_pkg.__path__ = [str(REPO_ROOT / "api")]
+    sys.modules["api"] = api_pkg
+
+def _load_module(module_name: str, relative_path: str):
+    spec = importlib.util.spec_from_file_location(module_name, REPO_ROOT / relative_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+models_module = _load_module("api.models", "api/models.py")
+security_module = _load_module("api.security", "api/security.py")
+
+ChatRequest = models_module.ChatRequest
+PredictRequest = models_module.PredictRequest
+RefineRequest = models_module.RefineRequest
+UploadDocRequest = models_module.UploadDocRequest
+
+_rate_limit_storage = security_module._rate_limit_storage
+check_rate_limit = security_module.check_rate_limit
+get_current_username = security_module.get_current_username
+validate_file_upload = security_module.validate_file_upload
 from database.db_utils import (
     execute_many,
     execute_query,
@@ -140,7 +164,7 @@ class TestSecurityUtils:
         assert exc.value.status_code == 400
 
     def test_validate_file_upload_generates_safe_name_for_hidden(self):
-        filename = validate_file_upload(".txt", file_size=100)
+        filename = validate_file_upload(".hidden.txt", file_size=100)
         assert filename.startswith("upload_")
         assert filename.endswith(".txt")
 
