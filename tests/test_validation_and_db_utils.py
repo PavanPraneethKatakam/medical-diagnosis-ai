@@ -120,7 +120,7 @@ class TestSecurityUtils:
             get_current_username(credentials)
         assert exc.value.status_code == 401
 
-    def _request_for_ip(self, ip="127.0.0.1"):
+    def _build_request_with_client_ip(self, ip="127.0.0.1"):
         scope = {
             "type": "http",
             "method": "GET",
@@ -131,20 +131,20 @@ class TestSecurityUtils:
         return Request(scope)
 
     def test_check_rate_limit_allows_within_limit(self):
-        request = self._request_for_ip()
+        request = self._build_request_with_client_ip()
         check_rate_limit(request, max_requests=2, window_seconds=60)
         check_rate_limit(request, max_requests=2, window_seconds=60)
         assert len(_rate_limit_storage["127.0.0.1"]) == 2
 
     def test_check_rate_limit_blocks_excess(self):
-        request = self._request_for_ip()
+        request = self._build_request_with_client_ip()
         check_rate_limit(request, max_requests=1, window_seconds=60)
         with pytest.raises(HTTPException) as exc:
             check_rate_limit(request, max_requests=1, window_seconds=60)
         assert exc.value.status_code == 429
 
     def test_check_rate_limit_cleans_old_entries(self):
-        request = self._request_for_ip("10.0.0.2")
+        request = self._build_request_with_client_ip("10.0.0.2")
         _rate_limit_storage["10.0.0.2"] = [datetime.now() - timedelta(seconds=120)]
         check_rate_limit(request, max_requests=1, window_seconds=60)
         assert len(_rate_limit_storage["10.0.0.2"]) == 1
